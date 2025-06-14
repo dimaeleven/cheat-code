@@ -1,0 +1,47 @@
+#!/bin/bash
+
+LOGFILE=~/Desktop/minecraft_cheat_scan.log
+KEYWORDS="kami kamiblue pyro impact wurst inertia liquidbounce sigma neverhook zamorozka minced wexside shit expensive wild fluger norender keaz xray meteor blackberry nursultan avalone rockstar mercu div niobium kion akrien celestial deadcode external norules rage bebraware rynware neverware aristois freecam baritone skillclient vape future gishcode boberware flauncher exloader mc100 editme cheat.dll .vape .jar"
+
+FOUND_CHEATS=0
+
+echo "🕵️ Minecraft Cheat Detection Report — $(date)" > "$LOGFILE"
+echo "=============================================" >> "$LOGFILE"
+
+echo -e "\n📁 [Scanning Minecraft folders for cheat files...]" | tee -a "$LOGFILE"
+
+# Поиск подозрительных файлов и логирование
+while IFS= read -r file; do
+  DIR_PATH=$(dirname "$file")
+  FILE_NAME=$(basename "$file")
+  echo -e "\n🚨 Найден файл: $FILE_NAME\n📂 Путь: $DIR_PATH" | tee -a "$LOGFILE"
+  FOUND_CHEATS=1
+done < <(
+  find ~/Library/Application\ Support/minecraft \( \
+    $(for k in $KEYWORDS; do echo -n "-iname \"*$k*\" -o "; done | sed 's/ -o $//') \
+  \) 2>/dev/null
+)
+
+# Проверка активных процессов
+echo -e "\n🔎 [Проверка активных процессов...]" | tee -a "$LOGFILE"
+for k in $KEYWORDS; do
+  if ps aux | grep -i "$k" | grep -v grep >/dev/null; then
+    echo "🚨 Процесс с ключом '$k':" | tee -a "$LOGFILE"
+    ps aux | grep -i "$k" | grep -v grep | tee -a "$LOGFILE"
+    FOUND_CHEATS=1
+  fi
+done
+
+# Проверка launchctl
+echo -e "\n📦 [Проверка launchctl и автозапуска...]" | tee -a "$LOGFILE"
+launchctl list | grep -iE "$(echo $KEYWORDS | sed 's/ /|/g')" >> "$LOGFILE"
+
+# Итог
+echo -e "\n======================" | tee -a "$LOGFILE"
+if [ "$FOUND_CHEATS" -eq 1 ]; then
+  echo -e "❗ Найдены подозрительные файлы или процессы." | tee -a "$LOGFILE"
+else
+  echo -e "✅ Чисты. Следов читов не найдено." | tee -a "$LOGFILE"
+fi
+echo -e "📄 Отчёт: $LOGFILE"
+echo "======================" | tee -a "$LOGFILE"
