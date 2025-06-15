@@ -3,32 +3,82 @@
 set -euo pipefail
 
 # ----------------------------------------
-# Minecraft Cheat Scanner - Improved Version
-# Description: Scans Minecraft folders, running processes, and launchctl for known cheat signatures.
-# Logs results with timestamps and enhanced formatting.
+# Minecraft Ultimate Cheat Scanner for macOS
+# User-Friendly Output Version
+# Compatible with Bash 3.x (no associative arrays)
 # ----------------------------------------
 
-# Default log file location
-DEFAULT_LOGFILE=~/Desktop/minecraft_cheat_scan.log
-
-# Use user-provided log file path or default
+DEFAULT_LOGFILE=~/Desktop/minecraft_ultimate_cheat_scan_readable.log
 LOGFILE="${1:-$DEFAULT_LOGFILE}"
 
-# List of keywords to search for - keep lowercase for consistency
 KEYWORDS=(
   kami kamiblue pyro impact wurst inertia liquidbounce sigma neverhook zamorozka minced wexside shit expensive wild
   fluger norender keaz xray meteor blackberry nursultan avalone rockstar mercu div niobium kion akrien celestial
   deadcode external norules rage bebraware rynware neverware aristois freecam baritone skillclient vape future
   gishcode boberware flauncher exloader mc100 editme cheat.dll .vape .jar
+  cheatengine hackclient cheatclient inject dllinjector injector hacktool trainer memoryeditor asm_debugger
+  cheatenginex pearl eclipse ghost vapex vapor vaporwave vaporwaveclient vaporclient
+  liquidbounceplus liquidbouncefree liquidbouncev2 liquidbouncepremium vaporwavepremium vaporwaveplus
+  baritoneplus baritonefree baritoneclient baritonev2 baritonepremium
+  impactplus impactpremium impactfree
+  ghostclient ghostprogram ghostv2 ghostpremium
+  pyroplus pyropremium pyrofree
+  wurstplus wurstfree wurstpremium
+  nursultanplus nursultanfree nursultanpremium
+  mcfunctionedit mcfunction
+  cheatengine64 cheatengine32 cheatengine_androidx
+  externalhack injector64 inject64
+  dllhijack dllinject dllinject64 dllload dllinjector64
+  .dll .so .dylib .jar .exe .bat .command
+  cheatclient* hacktool* injector* vapex* ghost* pyro* liquidbounce* baritone* impact*
+  cheats cheats_disabled hacks mods forbiddenmods unapprovedmods
 )
 
-# Format the keywords for search in find and grep easily
-# We will build a regex pattern joined by | (escape dots)
-function build_regex_pattern() {
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+RESET='\033[0m'
+
+FOUND_CHEATS=0
+FOUND_COUNT=0
+
+timestamp() {
+  date "+%Y-%m-%d %H:%M:%S"
+}
+
+log_header() {
+  printf "\n%s\n%s\n" "=== Minecraft Ultimate Cheat Scan Report ===" "Generated: $(timestamp)"
+}
+
+log_section() {
+  printf "\n%s\n" "-------- $1 --------"
+}
+
+log_found_file() {
+  printf "${YELLOW}Detected File:${RESET}\n  %s\n${YELLOW}Directory:${RESET}\n  %s\n" "$1" "$2" | tee -a "$LOGFILE"
+}
+
+log_found_process() {
+  printf "${YELLOW}Detected Process (PID %s):${RESET}\n%s\n" "$1" "$2" | tee -a "$LOGFILE"
+}
+
+log_found_launchctl() {
+  printf "${YELLOW}Detected Launchctl Entry:${RESET}\n%s\n" "$1" | tee -a "$LOGFILE"
+}
+
+log_info() {
+  printf "${CYAN}%s${RESET}\n" "$1" | tee -a "$LOGFILE"
+}
+
+log_success() {
+  printf "${GREEN}%s${RESET}\n" "$1" | tee -a "$LOGFILE"
+}
+
+build_regex_pattern() {
   local pattern=""
   local first=1
   for k in "${KEYWORDS[@]}"; do
-    # Escape dots to avoid regex matching any character
     esc=$(printf '%s' "$k" | sed 's/\./\\./g')
     if [ $first -eq 1 ]; then
       pattern="$esc"
@@ -40,118 +90,106 @@ function build_regex_pattern() {
   echo "$pattern"
 }
 
-SEARCH_REGEX="$(build_regex_pattern)"
+SEARCH_REGEX=$(build_regex_pattern)
 
-# Colors for terminal output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-RESET='\033[0m'
-
-FOUND_CHEATS=0
-
-# Timestamp function for log entries
-timestamp() {
-  date "+%Y-%m-%d %H:%M:%S"
-}
-
-# Log and terminal output function with color and timestamp
-log_info() {
-  local msg="$1"
-  echo -e "${CYAN}[$(timestamp)]${RESET} $msg" | tee -a "$LOGFILE"
-}
-
-log_warn() {
-  local msg="$1"
-  echo -e "${YELLOW}[$(timestamp)] WARNING:${RESET} $msg" | tee -a "$LOGFILE"
-}
-
-log_error() {
-  local msg="$1"
-  echo -e "${RED}[$(timestamp)] ERROR:${RESET} $msg" | tee -a "$LOGFILE"
-}
-
-log_success() {
-  local msg="$1"
-  echo -e "${GREEN}[$(timestamp)] SUCCESS:${RESET} $msg" | tee -a "$LOGFILE"
-}
-
-# Initialize log file
-{
-  echo "🕵️ Minecraft Cheat Detection Report — $(date)"
-  echo "============================================="
-} > "$LOGFILE"
-
-log_info "📁 Starting scan of Minecraft folders for cheat files..."
-
-MINECRAFT_DIR=~/Library/Application\ Support/minecraft
-
-# Find suspicious files matching keywords, case-insensitive
-found_files=()
-while IFS= read -r file; do
-  found_files+=("$file")
-done < <(
-  find "$MINECRAFT_DIR" -type f -iname "*.*" 2>/dev/null | grep -E -i -- "$SEARCH_REGEX" || true
+DIRS_TO_SCAN=(
+  "$HOME/Library/Application Support/minecraft"
+  "$HOME/Library/LaunchAgents"
+  "/Library/LaunchAgents"
+  "/Library/LaunchDaemons"
+  "$HOME/Downloads"
+  "$HOME/.local/share/minecraft"
+  "$HOME/.minecraft"
+  "/Applications"
+  "$HOME/Library/Containers"
+  "$HOME/Desktop"
 )
 
-if [ ${#found_files[@]} -gt 0 ]; then
-  for f in "${found_files[@]}"; do
-    DIR_PATH=$(dirname "$f")
-    FILE_NAME=$(basename "$f")
-    log_warn "🚨 Found suspicious file: $FILE_NAME"
-    log_warn "📂 Directory: $DIR_PATH"
-    FOUND_CHEATS=1
-  done
-else
-  log_success "No suspicious cheat files found in Minecraft folders."
-fi
+# Clear log file before use
+: > "$LOGFILE"
+log_header | tee -a "$LOGFILE"
 
-log_info "🔎 Checking active processes for suspicious keywords..."
-
-# Efficiently search for processes matching keywords using pgrep (case-insensitive, partial match)
-# pgrep does not support regex OR, so we iterate keywords and aggregate results uniquely
-found_procs=()
-declare -A proc_seen
-
-for k in "${KEYWORDS[@]}"; do
-  mapfile -t proc_list < <(pgrep -fi "$k" || true)
-  for pid in "${proc_list[@]}"; do
-    if [ -n "$pid" ] && [ -z "${proc_seen[$pid]:-}" ]; then
-      proc_seen[$pid]=1
-      found_procs+=("$pid")
-    fi
-  done
+log_section "Scanning Directories for Suspicious Files"
+for dir in "${DIRS_TO_SCAN[@]}"; do
+  if [ -d "$dir" ]; then
+    log_info "Scanning directory: $dir"
+    while IFS= read -r file; do
+      FOUND_CHEATS=1
+      FOUND_COUNT=$((FOUND_COUNT+1))
+      dirpath=$(dirname "$file")
+      filename=$(basename "$file")
+      log_found_file "$filename" "$dirpath"
+    done < <(find "$dir" -type f -iregex ".*\$${SEARCH_REGEX}\$.*" -maxdepth 10 2>/dev/null || true)
+  fi
 done
 
-if [ ${#found_procs[@]} -gt 0 ]; then
-  for pid in "${found_procs[@]}"; do
-    proc_cmd=$(ps -p "$pid" -o user=,pid=,pcpu=,pmem=,etime=,args=)
-    log_warn "🚨 Suspicious process detected (PID $pid):"
-    echo "$proc_cmd" | tee -a "$LOGFILE"
-    FOUND_CHEATS=1
-  done
-else
-  log_success "No suspicious processes detected."
-fi
+# Initialize an empty string to track found PIDs as a space-separated list
+found_pids=""
 
-log_info "📦 Checking launchctl for suspicious entries..."
+pid_in_list() {
+  local pid=$1
+  case " $found_pids " in
+    *" $pid "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
-# Check launchctl list for suspicious keywords; output full lines for context
-if launchctl list 2>/dev/null | grep -Ei -- "$SEARCH_REGEX" | tee -a "$LOGFILE"; then
+log_section "Scanning Running Processes"
+for k in "${KEYWORDS[@]}"; do
+  while IFS= read -r pid; do
+    if [ -n "$pid" ]; then
+      if ! pid_in_list "$pid"; then
+        found_pids="$found_pids $pid"
+        proc_info=$(ps -p "$pid" -o user=,pid=,pcpu=,pmem=,etime=,args=)
+        if echo "$proc_info" | grep -iqE "$SEARCH_REGEX"; then
+          FOUND_CHEATS=1
+          FOUND_COUNT=$((FOUND_COUNT+1))
+          log_found_process "$pid" "$proc_info"
+        fi
+      fi
+    fi
+  done < <(pgrep -fi "$k" || true)
+done
+
+log_section "Checking Launchctl Agents and Daemons"
+if launchctl list 2>/dev/null | grep -Ei --color=never "$SEARCH_REGEX" | tee -a "$LOGFILE"; then
   FOUND_CHEATS=1
+  FOUND_COUNT=$((FOUND_COUNT+1))
 else
-  log_success "No suspicious launchctl entries found."
+  log_info "No suspicious launchctl entries found."
 fi
 
-# Summary
-log_info "======================"
+log_section "Checking cron Jobs"
+CRON_FILES=("/usr/lib/cron/tabs/$USER" "/var/at/tabs/$USER" "/etc/crontab")
+for cronfile in "${CRON_FILES[@]}"; do
+  if [ -f "$cronfile" ]; then
+    if grep -Ei --color=never "$SEARCH_REGEX" "$cronfile" >> "$LOGFILE"; then
+      FOUND_CHEATS=1
+      FOUND_COUNT=$((FOUND_COUNT+1))
+      printf "${YELLOW}Suspicious cron entry found in %s${RESET}\n" "$cronfile" | tee -a "$LOGFILE"
+    fi
+  fi
+done
+
+log_section "Checking Shell Profiles for Suspicious Entries"
+SHELL_PROFILES=(~/.bash_profile ~/.bashrc ~/.zshrc ~/.profile ~/.zshenv)
+for profile in "${SHELL_PROFILES[@]}"; do
+  if [ -f "$profile" ]; then
+    if grep -Ei --color=never "$SEARCH_REGEX" "$profile" >> "$LOGFILE"; then
+      FOUND_CHEATS=1
+      FOUND_COUNT=$((FOUND_COUNT+1))
+      printf "${YELLOW}Suspicious cheat reference found in shell profile: %s${RESET}\n" "$profile" | tee -a "$LOGFILE"
+    fi
+  fi
+done
+
+log_section "Scan Summary"
 if [ "$FOUND_CHEATS" -eq 1 ]; then
-  log_warn "❗ Suspicious files, processes, or launchctl entries were found."
+  log_success "Scan complete: Found $FOUND_COUNT suspicious indication(s) related to Minecraft cheats."
 else
-  log_success "✅ System is clean. No signs of cheats detected."
+  log_success "Scan complete: No Minecraft cheat indications detected."
 fi
-log_info "📄 Report saved to: $LOGFILE"
-log_info "======================"
+
+log_info "Full report saved to: $LOGFILE"
 
 exit 0
