@@ -5,8 +5,8 @@
 
 
 
- chmod +x ~/Desktop/cheat_check.sh
-~/Desktop/cheat_check.sh
+ chmod +x ~/Desktop/minecraft_cheat_scan_improved.sh
+~/Desktop/minecraft_cheat_scan_improved.sh
 
 
 
